@@ -2,7 +2,9 @@ package domain
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
+	"runtime/debug"
 	"strings"
 )
 
@@ -37,26 +39,34 @@ func HandleFunc(h GeneralHandlerType) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
 			if p := recover(); p != nil {
-				w.WriteHeader(500)
 				msg, _ := p.(string)
-				http.Error(w, "", 500)
+				log.Println("panic encountered; stacktrace\n", string(debug.Stack()))
 				w.Write([]byte(msg))
+				http.Error(w, "", http.StatusInternalServerError)
 			}
 		}()
 
 		resp, err := h(w, r)
 		if err != nil {
-			resp.Code = 500
+			resp.Code = http.StatusInternalServerError
 			resp.Message = "internal error"
 			resp.DeveloperMsg = append(resp.DeveloperMsg, err.Error())
-			http.Error(w, "", resp.Code)
 		}
 		bResp, _ := json.Marshal(&resp)
 		if resp.Code == 0 {
-			resp.Code = 200
+			resp.Code = http.StatusOK
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(resp.Code)
 		w.Write(bResp)
 	}
+}
+
+func ValidateJSONContentType(r *http.Request) bool {
+	if r == nil {
+		return false
+	}
+
+	contentType := strings.ToLower(r.Header.Get("Content-type"))
+	return contentType == "application/json"
 }
